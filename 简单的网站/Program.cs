@@ -1,9 +1,9 @@
-
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Text;
 
 namespace SimpleWebServer
 {
@@ -12,16 +12,14 @@ namespace SimpleWebServer
         static void Main(string[] args)
         {
             string configFile = "c:/config.ini";
-            int port = 8111; // 默认使用8111端口
+            string rootDir = "c:/web"; // 默认根目录为c:/web
 
-            // 从配置文件中读取端口号
+            // 从配置文件中读取根目录
             if (File.Exists(configFile))
             {
-                string configText = File.ReadAllText(configFile);
+                string[] lines = File.ReadAllLines(configFile, Encoding.UTF8);
 
-                string[] configLines = configText.Split(new[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
-
-                foreach (string line in configLines)
+                foreach (string line in lines)
                 {
                     string trimmedLine = line.Trim();
 
@@ -32,22 +30,25 @@ namespace SimpleWebServer
 
                     string[] parts = trimmedLine.Split('=');
 
-                    if (parts.Length == 2 && parts[0].Trim().ToLower() == "port")
+                    if (parts.Length == 2 && parts[0].Trim().ToLower() == "rootdir")
                     {
-                        if (int.TryParse(parts[1].Trim(), out int readPort))
-                        {
-                            port = readPort;
-                        }
+                        rootDir = parts[1].Trim();
                         break;
                     }
                 }
             }
 
+            if (!Directory.Exists(rootDir))
+            {
+                Console.WriteLine($"Error: Root directory {rootDir} does not exist.");
+                return;
+            }
+
             HttpListener listener = new HttpListener();
-            listener.Prefixes.Add($"http://+:{port}/");
+            listener.Prefixes.Add($"http://+:{GetFreeTcpPort()}/");
             listener.Start();
 
-            Console.WriteLine($"Web server is running on port {port}...");
+            Console.WriteLine($"Web server is running on port {((HttpListenerPrefixCollection)listener.Prefixes)[0]}...");
 
             while (true)
             {
@@ -55,54 +56,26 @@ namespace SimpleWebServer
                 {
                     HttpListenerContext context = listener.GetContext();
 
-                    string requestPath = context.Request.Url.AbsolutePath.Substring(1); // 去掉路径前面的斜杠
+                    string requestPath = context.Request.Url.AbsolutePath.Substring(1).Replace('/', Path.DirectorySeparatorChar); // 去掉路径前面的斜杠并将虚拟路径分隔符替换为实际路径分隔符
 
-                    if (requestPath == "")
+                    string fullPath = Path.Combine(rootDir, requestPath);
+
+                    if (string.IsNullOrWhiteSpace(requestPath) || !fullPath.StartsWith(rootDir)) // 显示根目录列表
                     {
-                        DirectoryInfo requestedDir = new DirectoryInfo(Directory.GetCurrentDirectory()); // 获取当前工作目录
-
-                        // 检查当前工作目录是否包含config.ini文件，如果包含，则排除它
-                        if (requestedDir.GetFiles().Any(f => f.Name.ToLower() == "config.ini"))
-                        {
-                            requestedDir = requestedDir.Parent; // 获取父级目录
-                        }
-
-                        RespondWithDirectoryListing(context, requestedDir);
+                        RespondWithDirectoryListing(context, new DirectoryInfo(rootDir));
                     }
-                    else // 请求路径不为空
+                    else if (File.Exists(fullPath)) // 请求的是文件
                     {
-                        FileSystemInfo requestedItem;
-
-                        try
-                        {
-                            requestedItem = new DirectoryInfo(requestPath);
-                        }
-                        catch (Exception)
-                        {
-                            requestedItem = new FileInfo(requestPath);
-                        }
-
-                        // 检查请求的是文件还是文件夹
-                        if (requestedItem.Exists && (requestedItem.Attributes & FileAttributes.Directory) == FileAttributes.Directory)
-                        {
-                            DirectoryInfo requestedDir = (DirectoryInfo)requestedItem;
-
-                            // 如果请求的目录是当前工作目录下的config.ini文件所在目录，则返回403禁止访问错误
-                            if (requestedDir.GetFiles().Any(f => f.Name.ToLower() == "config.ini"))
-                            {
-                                context.Response.StatusCode = 403; // 禁止访问
-                                context.Response.Close();
-                            }
-                            else
-                            {
-                                RespondWithDirectoryListing(context, requestedDir);
-                            }
-                        }
-                        else
-                        {
-                            context.Response.StatusCode = 404; // 文件或目录不存在
-                            context.Response.Close();
-                        }
+                        RespondWithFile(context, new FileInfo(fullPath));
+                    }
+                    else if (Directory.Exists(fullPath)) // 请求的是目录
+                    {
+                        RespondWithDirectoryListing(context, new DirectoryInfo(fullPath));
+                    }
+                    else // 路径不存在
+                    {
+                        context.Response.StatusCode = 404; // 文件或目录不存在
+                        context.Response.Close();
                     }
                 }
                 catch (Exception ex)
@@ -112,11 +85,33 @@ namespace SimpleWebServer
             }
         }
 
+        static void RespondWithFile(HttpListenerContext context, FileInfo file)
+        {
+            context.Response.ContentType = GetContentType(file.Extension);
+            context.Response.ContentLength64 = file.Length;
+            context.Response.AddHeader("Content-Disposition", $"attachment; filename=\"{file.Name}\"");
+
+            using (Stream fileStream = file.OpenRead())
+            {
+                byte[] buffer = new byte[4096];
+                int bytesRead;
+
+                while ((bytesRead = fileStream.Read(buffer, 0, buffer.Length)) > 0)
+                {
+                    context.Response.OutputStream.Write(buffer, 0, bytesRead);
+                }
+            }
+
+            context.Response.OutputStream.Flush();
+            context.Response.OutputStream.Close();
+        }
+
         static void RespondWithDirectoryListing(HttpListenerContext context, DirectoryInfo directory)
         {
             string html = @"
                 <html>
                 <head>
+                    <meta charset='utf-8' />
                     <title>{0}</title>
                 </head>
                 <body>
@@ -133,34 +128,78 @@ namespace SimpleWebServer
             DirectoryInfo[] subDirectories = directory.GetDirectories();
             FileInfo[] files = directory.GetFiles();
 
-            string fileListHtml = "";
+            StringBuilder fileListHtmlBuilder = new StringBuilder();
 
             // 列出子目录
             foreach (DirectoryInfo subDir in subDirectories)
             {
-                if (subDir.Name.ToLowerInvariant() == "config.php" || subDir.Name.ToLowerInvariant() == "webserver.exe")
+                if ((subDir.Attributes & FileAttributes.Hidden) == FileAttributes.Hidden)
                 {
                     continue;
                 }
-                fileListHtml += string.Format(listItemHtml, subDir.Name + "/", subDir.Name);
+
+                string subDirName = subDir.Name + "/";
+                string subDirVirtualPath = subDir.FullName.Substring(directory.FullName.Length).Replace(Path.DirectorySeparatorChar, '/');
+
+                fileListHtmlBuilder.Append(string.Format(listItemHtml, subDirVirtualPath, WebUtility.HtmlEncode(subDirName)));
             }
 
             // 列出文件
             foreach (FileInfo file in files)
             {
-                if (file.Name.ToLowerInvariant() == "config.ini" || file.Name.ToLowerInvariant() == "webserver.exe")
+                if ((file.Attributes & FileAttributes.Hidden) == FileAttributes.Hidden)
                 {
                     continue;
                 }
-                fileListHtml += string.Format(listItemHtml, file.Name, file.Name);
+
+                string fileName = file.Name;
+                string fileVirtualPath = file.FullName.Substring(directory.FullName.Length).Replace(Path.DirectorySeparatorChar, '/');
+
+                fileListHtmlBuilder.Append(string.Format(listItemHtml, fileVirtualPath, WebUtility.HtmlEncode(fileName)));
             }
 
-            byte[] buffer = System.Text.Encoding.UTF8.GetBytes(string.Format(html, directory.Name, fileListHtml));
-            context.Response.ContentType = "text/html";
+            byte[] buffer = Encoding.UTF8.GetBytes(string.Format(html, directory.Name, fileListHtmlBuilder));
+            context.Response.ContentType = "text/html; charset=utf-8";
             context.Response.ContentLength64 = buffer.Length;
             context.Response.OutputStream.Write(buffer, 0, buffer.Length);
             context.Response.OutputStream.Flush();
             context.Response.OutputStream.Close();
+        }
+
+        static string GetContentType(string fileExtension)
+        {
+            switch (fileExtension.ToLowerInvariant())
+            {
+                case ".css":
+                    return "text/css";
+                case ".gif":
+                    return "image/gif";
+                case ".html":
+                case ".htm":
+                    return "text/html";
+                case ".jpeg":
+                case ".jpg":
+                    return "image/jpeg";
+                case ".js":
+                    return "application/javascript";
+                case ".json":
+                    return "application/json";
+                case ".png":
+                    return "image/png";
+                case ".txt":
+                    return "text/plain";
+                default:
+                    return "application/octet-stream";
+            }
+        }
+
+        static int GetFreeTcpPort()
+        {
+            using (var socket = new System.Net.Sockets.Socket(System.Net.Sockets.AddressFamily.InterNetwork, System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp))
+            {
+                socket.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+                return ((IPEndPoint)socket.LocalEndPoint).Port;
+            }
         }
     }
 }
