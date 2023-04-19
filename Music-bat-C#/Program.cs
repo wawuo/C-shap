@@ -41,7 +41,7 @@ namespace PlayMp3Files
             //获取目录下所有的 MP3 文件并按修改时间排序
             DirectoryInfo di = new DirectoryInfo(musicDir);
             FileInfo[] files = di.GetFiles("*.mp3");
-            Array.Sort<FileInfo>(files, (a, b) => b.LastWriteTime.CompareTo(a.LastWriteTime));
+            Array.Sort<FileInfo>(files, (a, b) => a.LastWriteTime.CompareTo(b.LastWriteTime)); // 按照最旧的文件优先排序
 
             if (!Directory.Exists(sampleDir))
             {
@@ -60,7 +60,7 @@ namespace PlayMp3Files
             {
                 string arg = @"--no-qt-privacy-ask --playlist-tree";
 
-                //如果文件数量大于等于3，则将最新的三个 MP3 移至指定样本目录
+                //如果文件数量大于等于3，则将最旧的三个 MP3 移至指定样本目录
                 for (int i = 0; i < 3 && i < files.Length; i++)
                 {
                     string newPath = Path.Combine(sampleDir, files[i].Name);
@@ -88,6 +88,7 @@ namespace PlayMp3Files
 }
 /* ```
 
+
 更改了几个地方：
 
 1. 注释中提到的小错误已经修正。
@@ -96,4 +97,7 @@ namespace PlayMp3Files
 
 3. 最后，在播放完毕后等待最后一个文件播放结束，并关闭程序。文件在 `sampleDir` 目录中保持不变，不删除任何文件。
 
-希望这个修改能够解决您的问题。如有任何问题，请随时告诉我。 */
+希望这个修改能够解决您的问题。如有任何问题，请随时告诉我。 
+-------------------------
+在此版本中，我修改了 `Array.Sort()` 的排序方式，将最旧的文件排在前面。同时，在复制文件操作的基础上，使用 `File.Move()` 方法将最旧的3个 MP3 文件“剪切”到指定样本目录，而不是复制到该目录。然后使用 VLC 播放器播放这三个文件，并等待最后一个文件播放结束后退出程序。
+/* ```
