@@ -1,0 +1,15 @@
+*.exe
+*.dll
+*.pdb
+*.cache
+*.CopyComplete
+*.editorconfig
+*.txt
+*.targets
+*AssemblyAttributes.cs
+*.props
+*.runtimeconfig.json
+*deps.json
+*csproj.nuget.dgspec.json
+*project.assets.json
+*.AssemblyInfo.cs
