@@ -1,164 +1,83 @@
 
 @echo off
+setlocal enabledelayedexpansion
 
-rem 需要reg.exe的支持
-rem 无法保证在中、英之外的其它语言的操作系统上得到正确结果
+::检查当前系统时间格式是否符合 YYYY/M/D 或 YYYY/M/DD 格式，如果不是则修改为标准格式 YYYY-MM-DD 并记录原格式
 for /f "skip=4 delims= " %%a in ('reg query "HKEY_CURRENT_USER\Control Panel\International" /v sShortDate') do set DateFormat=%%a
-set DateFormat=%DateFormat:yyyy/M/d%
-reg add "HKEY_CURRENT_USER\Control Panel\International" /v sShortDate /t REG_SZ /d yyyy-M-d /f>nul
-set Today=%date: =%
-reg add "HKEY_CURRENT_USER\Control Panel\International" /v sShortDate /t REG_SZ /d %DateFormat% /f>nul
-set "Week=Mon Tue Wed Thu Fri Sat Sun 星期一 星期二 星期三 星期四 星期五 星期六 星期日"
-for %%a in (%Week%) do call set "Today=%%Today:%%a=%%"
-
-
-::获取时间中的小时 将格式设置为：24小时制
-set timevar=%time:~0,2%
-if /i %timevar% LSS 10 (
-set timevar=0%time:~1,1%
+set DateFormat=%DateFormat:/M/=M%
+if not "%DateFormat%"=="yyyy-M-d" if not "%DateFormat%"=="yyyy-M-dd" (
+    set Today=%date:~0,10%
+    reg add "HKEY_CURRENT_USER\Control Panel\International" /v sShortDate /t REG_SZ /d yyyy-M-d /f>nul
+    for %%a in (%Week%) do set "Today=!Today:%%a=!"
 )
 
+::获取当前时间中的小时（24小时制）和分钟，并写入播放历史日志
+for /f "tokens=1-4 delims=:." %%a in ("%time%") do set /a "hour=%%a", "min=%%b", "sec=%%c"
+set timevar=%time:~0,2%
+if %timevar% LSS 10 set timevar=0%time:~1,1%
+set PlayLog=f:\play\播放历史.txt
+echo [%date% %timevar%:%time:~3,2%]>>"%PlayLog%"
 
-::获取时间中的分、秒 将格式设置为：3220 ，表示 32分20秒
-::set timevar=%timevar%%time:~3,2%%time:~6,2%
-@echo %Today%--%time%%time:~6,2% >>"f:\play\播放历史.txt"
+:: 遍历音乐目录下的 MP3 文件
+set Count=0
+for /r "Y:\music" %%A in (*.mp3) do (
+    set /a Count+=1
+    echo %%A>>1.txt
+)
 
+::如果从音乐目录下找到的 MP3 文件数量小于 3，则将播放器设置为使用豆瓣电台播放，否则使用 Windows Media Player 
+if %Count% lss 3 (
+    echo 使用豆瓣电台
+    taskkill /F /IM CloudMusic.exe >nul 2>nul
+    ping -n 15 127.0.0.1 >nul 2>nul
+    start "" "E:\Program Files\Netease\CloudMusic\cloudmusic.exe"
+    ping -n 900 127.0.0.1 >nul 2>nul
+) else (
+    echo 使用 Windows Media Player
+    taskkill /F /IM wmplayer.exe >nul 2>nul
+    for /f "tokens=2 delims=:" %%A in ('tasklist /FI "IMAGENAME eq wmplayer.exe" /NH /FO CSV') do (
+        taskkill /F /PID %%A >nul 2>nul
+    )
+    ping -n 22 127.0.0.1 >nul 2>nul
 
+    :: 找到音乐目录下最老的三个 MP3 文件并移至播放目录
+    dir /B /A:-D /O:D "Y:\music\*.mp3" | set /P oldest_files=
+    type nul >temp.txt
+    for %%A in (%oldest_files%) do (
+        echo copying "Y:\music\%%A" to "f:\play\%%A">>temp.txt
+        copy /Y "Y:\music\%%A" "f:\play\%%A" >>temp.txt
+    )
+    type temp.txt>>"%PlayLog%"
+    del temp.txt >nul 2>nul
 
-@echo off
-	 set ProcessName1=CloudMusic.exe
-	 set processName=wmplayer.exe
- 	 set ProcessName2=DoubanRadio.exe
-	 set processName0=cmd.exe
-	 
+    start /min "" "D:\Program Files\Windows Media Player\wmplayer.exe"
+    ping -n 5 127.0.0.1 >nul 2>nul
+    echo 开始自动播放
+    start /max "" "f:\musicbak\Playlists\自动播放列表.wpl"
+    ping -n 900 127.0.0.1 >nul 2>nul
 
- :panduang
+    :: 停止 Windows Media Player 的运行，并删除已经播放过的文件
+    taskkill /F /IM wmplayer.exe >nul 2>nul
+    for /f "tokens=2 delims=:" %%A in ('tasklist /FI "IMAGENAME eq wmplayer.exe" /NH /FO CSV') do (
+        taskkill /F /PID %%A >nul 2>nul
+    )
+    dir /B /A:-D /O:D "f:\play\*.mp3" | findstr /I "mp3" >temp.txt
+    set fileCount=0
+    for /f "tokens=* delims=" %%A in (temp.txt) do (
+        if !fileCount! LSS 3 (
+            type nul >nul 2>nul "f:\mp3样本\%%A"
+            echo 删除已播放过的文件 "f:\play\%%A">>"%PlayLog%"
+        ) else (
+            del /Q /F "f:\play\%%A" >nul 2>nul
+            echo 删除已播放过的文件 "f:\play\%%A">>"%PlayLog%"
+        )
+        set /a fileCount+=1
+    )
+    del temp.txt >nul 2>nul
+)
 
-::遍历mp3文件
-::	初始化co
+::清理临时文件
+del /Q /S /F Y:\music\*.td* >nul 2>nul
+del /Q /S /F f:\play\*.txt >nul 2>nul
 
-	set co = 1
-	for /r "Y:\music" %%a in (*.mp3) do (
-		set fn=%%~na
-		if "!fn:~0,1!" neq "0" (
-		set /a co += 1
-		echo %%~a>>1.txt
-               
-		)
-	)      
-
-
-	
-	for /r "Y:\music" %%a in (*.mp3.td*) do (
-		set fn=%%~na
-		if "!fn:~0,1!" neq "0" (
-		set /a cc += 1
-		del  /q /s "%%~a"
-               
-		)
-	)   
-
-	for /r "Y:\music" %%a in (*.td) do (
-		set fn=%%~na
-		if "!fn:~0,1!" neq "0" (
-		set /a ce += 1
-		del  /q /s "%%~a"
-               
-		)
-	)  
-
-
-::这里如果%co%<3运行DoubanRadio.exe"豆瓣,否则运行WMP
-
-::	echo  %co% 
-	
-::if %co% lss 3 goto :kugou 
-	if defined co (echo 变量str已经被赋值，其值为%co%) else (goto  :kugou ) 
-	if %co% LSS 3  goto :kugou 
-	if !co! GEQ 3  goto :wmplayer
-	
-	::echo "%te%"
-	echo wmp f:\play\播放历史.txt
-	goto :wmplayer
-
-	echo 统计不成功
-	ping -n 20 127.1 >nul 
-	goto :exit
- 
-:kugou
-
-taskkill /f /im "%ProcessName%"
-taskkill /f /im "%ProcessName1%"
-
-echo %ProcessName1%>>f:\play\播放历史.txt
-ping -n 15 127.1 >nul 
-	start ""  "E:\Program Files\Netease\CloudMusic\cloudmusic.exe"
-
-::下面这句这里设置播放时间
-	ping -n 900 127.1 >nul
-	echo no有
-	goto :exit
-
-:wmplayer
-   
-taskkill /f /im "%ProcessName%"
-taskkill /f /im "%ProcessName1%"
-
-::这里扫描媒体文件
-  
-	for /f "tokens=1* delims=:" %%i in ('findstr /n ".*" 1.txt') do (
-      if %%i==1   copy /y "%%j" "f:\play"  && del /q /s "%%j"  &&  echo %%j>>f:\play\播放历史.txt
-      if %%i==2   copy /y "%%j" "f:\play"  && del /q /s "%%j"  &&  echo %%j>>f:\play\播放历史.txt
-      if %%i==3   copy  /y "%%j" "f:\play" && del /q /s "%%j"  &&  echo %%j>>f:\play\播放历史.txt
-	    if %%i==4   copy  /y "%%j" "f:\play" && del /q /s "%%j"  &&  echo %%j>>f:\play\播放历史.txt
-
-	)
-
-	start /min ""  "D:\Program Files\Windows Media Player\wmplayer.exe"
-	 ping -n 22 127.1 >nul 
-	 
-	 
-	  echo 正在启动点歌系统
-	 start /max ""  "f:\musicbak\Playlists\自动播放列表.wpl"
-
- ::下面这句这里设置播放时间
-	ping -n 900 127.1 >nul
-	
-::这里先关播放器，否则不能删除
-	
-	taskkill /f /im "%ProcessName%"
-	taskkill /f /im "%ProcessName1%"
-::这里删除前三个已播放过的文件
-         for /f "delims=" %%i in ('dir "f:\play\*.mp3"  /s /b') do copy /y "%%i" "f:\mp3样本\"
-
-
-	    
- 
-		
-		ping -n 3 127.1 >nul
-
-::taskkill /f /im "%ProcessName2%" 这里不能先关CMD
-
-
-goto :exit
-
-:exit
-del /q /s 1.txt
-del /q /s "f:\play\*.mp3"
-del /q /s "f:\play\*.jpg"
-del /q /s "Y:\music\*.jpg"
-del /q /s "Y:\music\*.txt"
-
-del /q /s 1.txt
-del /q /s "f:\play\*.mp3"
-del /q /s "f:\music\*.jpg"
-del /q /s "f:\music\*.txt"
-
-taskkill /f /im "%ProcessName%"
-taskkill /f /im "%ProcessName1%"
-taskkill /f /im "%ProcessName2%"
-taskkill /f /im "%ProcessName3%"
-taskkill /f /im "%ProcessName0%"
-
-
- exit
+exit
