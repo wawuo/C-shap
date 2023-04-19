@@ -13,3 +13,7 @@
 *csproj.nuget.dgspec.json
 *project.assets.json
 *.AssemblyInfo.cs
+*.mp3
+Music-bat-C#/obj/Debug/
+Music-bat-C#/wwwroot/
+Music-bat-C#/
