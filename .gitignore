@@ -16,4 +16,6 @@
 *.mp3
 Music-bat-C#/obj/Debug/
 Music-bat-C#/wwwroot/
-Music-bat-C#/
+
+Music-bat-C#/bin/
+Music-bat-C#/Pages/
