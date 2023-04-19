@@ -89,6 +89,35 @@ namespace PlayMp3Files
 
                 //等待播放完毕后退出程序
                 System.Threading.Thread.Sleep((int)(new TimeSpan(0, 0, 0, 0, (int)files[2].Length * 8).TotalMilliseconds));
+				
+				
+				
+				// 获取正在运行的 VLC 进程
+					Process[] processes = Process.GetProcessesByName("vlc");
+
+					if (processes.Length > 0)
+					{
+						// 设置计时器并等待15分钟
+						System.Timers.Timer timer = new System.Timers.Timer(900000);
+						timer.AutoReset = false;
+						timer.Elapsed += (sender, e) =>
+						{
+							// 循环关闭所有运行中的 VLC 进程
+							foreach (Process process in processes)
+							{
+								process.CloseMainWindow();
+							}
+
+							// 关闭 C# 程序
+							Environment.Exit(0);
+						};
+						timer.Start();
+					}
+					else
+					{
+						// 如果没有找到 VLC 进程，则直接关闭 C# 程序
+						Environment.Exit(0);
+					}
             }
         }
     }
