@@ -1,0 +1,23 @@
+<!-- Views/File/Upload.cshtml -->
+@model WebDisk.ViewModels.UploadViewModel
+
+<h1>Upload a file</h1>
+
+<form asp-action="Upload" method="post" enctype="multipart/form-data">
+    <!-- Add a hidden input for the parent id -->
+    <input type="hidden" asp-for="ParentId" />
+    <div>
+        <!-- Add an input for selecting a file -->
+        <label asp-for="File"></label>
+        <input asp-for="File" />
+        <span asp-validation-for="File"></span>
+    </div>
+    <div>
+        <!-- Add a button for submitting the form -->
+        <button type="submit">Upload</button>
+    </div>
+</form>
+
+@section Scripts {
+    @{ await Html.RenderPartialAsync("_ValidationScriptsPartial"); }
+}

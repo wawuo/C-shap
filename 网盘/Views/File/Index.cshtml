@@ -1,0 +1,68 @@
+<!-- Views/File/Index.cshtml -->
+@model WebDisk.Models.File
+
+<h1>Web Disk</h1>
+
+@if (Model == null)
+{
+    <p>You are in the root folder.</p>
+}
+else
+{
+    <p>You are in the folder @Model.Name.</p>
+}
+
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Size</th>
+            <th>Type</th>
+            <th>Created At</th>
+            <th>Modified At</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        @if (Model != null && Model.ParentId != null)
+        {
+            <!-- Add a link to go back to the parent folder -->
+            <tr>
+                <td><a asp-action="Index" asp-route-id="@Model.ParentId">..</a></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+        }
+        @foreach (var file in Model?.Children ?? ViewBag.Files)
+        {
+            <!-- Add a row for each file or folder -->
+            <tr>
+                @if (file.Type == null)
+                {
+                    <!-- If it is a folder, add a link to go into it -->
+                    <td><a asp-action="Index" asp-route-id="@file.Id">@file.Name</a></td>
+                }
+                else
+                {
+                    <!-- If it is a file, add a link to download it -->
+                    <td><a asp-action="Download" asp-route-id="@file.Id">@file.Name</a></td>
+                }
+                <td>@file.Size</td>
+                <td>@file.Type</td>
+                <td>@file.CreatedAt</td>
+                <td>@file.ModifiedAt</td>
+                <td>
+                    <!-- Add a link to delete the file or folder -->
+                    <a asp-action="Delete" asp-route-id="@file.Id">Delete</a>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<!-- Add a link to upload a file to the current folder -->
+<a asp-action="Upload" asp-route-id="@Model?.Id">Upload a file</a>
+

@@ -6,6 +6,7 @@ namespace PlayMp3Files
 {
     class Program
     {
+
         static void Main(string[] args)
         {
             string musicDir = @"Y:\Music";
@@ -38,90 +39,73 @@ namespace PlayMp3Files
                 File.WriteAllLines(configPath, lines);
             }
 
-            //获取目录下所有的 MP3 文件并按修改时间排序
+            // 获取目录下所有的 MP3 文件并按修改时间排序
             DirectoryInfo di = new DirectoryInfo(musicDir);
             FileInfo[] files = di.GetFiles("*.mp3");
-			int count = files.Length;
+            int count = files.Length;
 
-			// 输出 mp3 文件个数
-			Console.WriteLine("该文件夹中的 mp3 文件数量为：" + count);	
+            // 输出 mp3 文件个数
+            Console.WriteLine("该文件夹中的 mp3 文件数量为：" + count);	
 		
-			
             Array.Sort<FileInfo>(files, (a, b) => a.LastWriteTime.CompareTo(b.LastWriteTime)); // 按照最旧的文件优先排序
 
             if (!Directory.Exists(sampleDir))
             {
-                //如果sampleDir不存在，就创建它
+                // 如果 sampleDir 不存在，就创建它
                 Directory.CreateDirectory(sampleDir);
             }
 
-            if (files.Length < 3)
+            if (count < 3)
             {
-                //如果文件数量小于3，则启动网易云音乐并设置退出时间为15分钟后
+                // 如果文件数量小于3，则启动网易云音乐并设置退出时间为15分钟后
                 Process.Start(neCloudMusicPath);
                 Console.WriteLine("启动网易云音乐播放器...");
-                System.Threading.Thread.Sleep(900000); //等待15分钟
+                // System.Threading.Thread.Sleep(900000); //等待15分钟
             }
             else
             {
                 string arg = @"--no-qt-privacy-ask --playlist-tree";
 
-                //如果文件数量大于等于3，则将最旧的三个 MP3 移至指定样本目录
-			for (int i = 0; i < 3 && i < files.Length; i++)
-					{
-						string newPath = Path.Combine(sampleDir, files[i].Name);
+                // 如果文件数量大于等于3，则将最旧的三个 MP3 移至指定样本目录
+                for (int i = 0; i < 3 && i < files.Length; i++)
+                {
+                    string newPath = Path.Combine(sampleDir, files[i].Name);
 
-						if (!File.Exists(newPath))
-						{
-							//剪切文件到指定目录
-							File.Move(files[i].FullName, newPath,true);
-						
-							// 更新要播放的文件参数字符串
-							arg += " \"" + newPath + "\"";
-							Console.WriteLine("要播放的文件" + newPath);
-						}
-					}
+                    if (!File.Exists(newPath))
+                    {
+                        // 剪切文件到指定目录
+                        File.Move(files[i].FullName, newPath, true);
 
-                //使用 VLC 播放样本目录下的三个 MP3
+                        // 更新要播放的文件参数字符串
+                        arg += " \"" + newPath + "\"";
+                        Console.WriteLine("要播放的文件" + newPath);
+                    }
+                }
+
+                // 使用 VLC 播放样本目录下的三个 MP3
               
                 Console.WriteLine("启动 VLC 播放器...");
-                Process.Start(playerPath, arg);
+                Process vlcProcess = new Process();
+                vlcProcess.StartInfo.FileName = playerPath;
+                vlcProcess.StartInfo.Arguments = arg;
+                vlcProcess.StartInfo.UseShellExecute = false;
+                vlcProcess.EnableRaisingEvents = true; // 启用 Exited 事件
 
-                //等待播放完毕后退出程序
-                System.Threading.Thread.Sleep((int)(new TimeSpan(0, 0, 0, 0, (int)files[2].Length * 8).TotalMilliseconds));
-				
-				
-				
-				// 获取正在运行的 VLC 进程
-					Process[] processes = Process.GetProcessesByName("vlc");
+                vlcProcess.Exited += (sender, e) =>
+                {
+                    // 关闭当前进程
+                    Environment.Exit(0);
+                };
 
-					if (processes.Length > 0)
-					{
-						// 设置计时器并等待15分钟
-						System.Timers.Timer timer = new System.Timers.Timer(900000);
-						timer.AutoReset = false;
-						timer.Elapsed += (sender, e) =>
-						{
-							// 循环关闭所有运行中的 VLC 进程
-							foreach (Process process in processes)
-							{
-								process.CloseMainWindow();
-							}
-
-							// 关闭 C# 程序
-							Environment.Exit(0);
-						};
-						timer.Start();
-					}
-					else
-					{
-						// 如果没有找到 VLC 进程，则直接关闭 C# 程序
-						Environment.Exit(0);
-					}
+                vlcProcess.Start();
             }
         }
     }
 }
+/*
+
+您需要将主函数中使用 VLC 播放样本目录的部分替换为上述代码以实现 VLC 播放完毕后自动退出程序的功能。
+
 /*-------------------------
 这段代码的作用是检查是否存在足够的 MP3 文件进行播放，如果存在，则先将最旧的三个文件移动到一个指定样本目录下，并使用 VLC 播放器播放这些文件。
 -------------------------------
